@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "MediaClient": {
+      "commandName": "Project",
+      "commandLineArgs": "--start-index 30000 --media-stream-count 1000",
+      "launchBrowser": false,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:50176;http://localhost:50177"
+    }
+  }
+}
