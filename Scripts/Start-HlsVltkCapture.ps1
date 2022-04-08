@@ -1,4 +1,7 @@
-$url = "http://localhost:5000/files/hls/media.m3u8"
+# You must start Generator.Gui from VLTK before executing this script (https://github.com/sandersaares/video-latency-toolkit).
+
+# Media server supports other paths, as well (just change the "hls" component to publish multiple media streams).
+$url = "http://localhost:5005/files/hls/media.m3u8"
 
 # NB! This needs a low latency connection to the media server.
 # 1 second segments are the smallest FFmpeg seems to reliably produce for us here. 0.5 fails playback.
