@@ -56,4 +56,4 @@ Useful Prometheus queries:
 
 99.99th percentile latency over the last 12 hours of data: `histogram_quantile(0.9999, sum by (le, instance) (rate(mlmc_manifest_e2e_latency_seconds_bucket[12h])))`
 
-There is a [Grafana dashboard](CDN analysis.json) included in this repo for convenient analysis. Setup and usage of Grafana is out of scope for this guide.
+There is a [Grafana dashboard](CDN%20analysis.json) included in this repo for convenient analysis. Setup and usage of Grafana is out of scope for this guide.
