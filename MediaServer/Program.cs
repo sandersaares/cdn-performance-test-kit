@@ -24,7 +24,7 @@ public static class Program
         builder.WebHost.UseUrls($"http://+:{ListenPort}");
 
         var app = builder.Build();
-        var logger = app.Services.GetRequiredService<LoggerFactory>().CreateLogger("");
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("");
 
         app.UseRouting();
 
