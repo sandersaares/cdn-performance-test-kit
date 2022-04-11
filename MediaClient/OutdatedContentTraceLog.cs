@@ -38,10 +38,12 @@ namespace MediaClient
             // X-Azure-Ref-OriginShield: 02DJNYgAAAABVx/0u30l4Q6qwHMmF0AfnSEtCRURHRTA3MTkAYmJhN2UyMTEtYTRiNS00ODdhLWFiMTItNmUzZDQ1YTY2N2Uw
             // X-MSEdge-Ref: ...
             // X-MS-Ref: ...
+            // X-Cache: TCP_MISS
             "X-Azure-Ref",
             "X-Azure-Ref-OriginShield",
             "X-MSEdge-Ref",
-            "X-MS-Ref"
+            "X-MS-Ref",
+            "X-Cache"
         };
 
         public void RecordResponseWithOutdatedManifest(string url, HttpResponseMessage response, TimeSpan manifestAge)
