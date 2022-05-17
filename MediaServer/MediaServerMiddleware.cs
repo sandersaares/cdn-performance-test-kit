@@ -136,7 +136,12 @@ public sealed class MediaServerMiddleware : IAsyncDisposable
 
     private async Task<BlobContainerClient> InitializeStorageAccountAsync()
     {
-        // Initializing just means making sure the container exists.
+        // Ensure that the default service version is recent, otherwise ETag values will be unquoted which will mess with some CDNs.
+        var properties = await _storageAccountClient.GetPropertiesAsync(_cancel);
+        properties.Value.DefaultServiceVersion = "2021-06-08";
+        await _storageAccountClient.SetPropertiesAsync(properties.Value, _cancel);
+
+        // Make sure the container exists.
         var client = _storageAccountClient.GetBlobContainerClient(ContainerName);
 
         await client.CreateIfNotExistsAsync(PublicAccessType.Blob, cancellationToken: _cancel);
