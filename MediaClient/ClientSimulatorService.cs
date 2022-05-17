@@ -131,12 +131,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     var request = new HttpRequestMessage(HttpMethod.Get, manifestUrl);
 
                     if (etag != null)
-                    {
-                        // We need to use the non-validated method because the standard one only accepted ETag values in quotes.
-                        // We cannot use quotes because some CDNs consider 0x8DA37C569822AC8 != "0x8DA37C569822AC8".
-                        if (!request.Headers.TryAddWithoutValidation("If-None-Match", etag))
-                            throw new ContractException("Failed to add If-None-Match header.");
-                    }
+                        request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag, isWeak: false));
 
                     response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, _cancel);
 
@@ -147,8 +142,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                         goto again;
                     }
 
-                    // Azure Blob Storage uses nonstandard non-quoted-string ETag so we need to read it from the "raw" headers.
-                    etag = response.Headers.NonValidated["ETag"].Single();
+                    etag = response.Headers.ETag?.Tag;
 
                     manifest = await response.Content.ReadAsStringAsync(_cancel);
                     ManifestReadDuration.Observe(sw.Elapsed.TotalSeconds);
