@@ -159,7 +159,7 @@ public sealed class MediaServerMiddleware : IAsyncDisposable
 
             if (originalPath.EndsWith(".m3u8"))
             {
-                cacheControl = $"max-age={Constants.MediaSegmentDurationSeconds}";
+                cacheControl = $"max-age={Constants.ManifestCacheDurationSeconds}";
                 contentType = "application/vnd.apple.mpegurl";
 
                 // We add a Unix timestamp in milliseconds to the end of the manifest file, for E2E latency detection. Assuming accurate clock sync here!
