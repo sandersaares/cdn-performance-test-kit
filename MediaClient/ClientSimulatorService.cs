@@ -147,6 +147,11 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     manifest = await response.Content.ReadAsStringAsync(_cancel);
                     ManifestReadDuration.Observe(sw.Elapsed.TotalSeconds);
                 }
+                catch (HttpRequestException ex)
+                {
+                    ManifestReadExceptions.WithLabels($"{ex.GetType().Name} {ex.StatusCode}").Inc();
+                    goto again;
+                }
                 catch (Exception ex)
                 {
                     ManifestReadExceptions.WithLabels(ex.GetType().Name).Inc();
@@ -243,6 +248,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         {
             while (!segment.Cancel.IsCancellationRequested)
             {
+                var sw = Stopwatch.StartNew();
                 var segmentUrl = string.Format(_options.UrlPattern, mediaStreamIndex, segment.Path);
                 var response = await httpClient.GetAsync(segmentUrl, HttpCompletionOption.ResponseContentRead, segment.Cancel);
 
@@ -250,6 +256,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 {
                     segment.Downloaded = DateTimeOffset.UtcNow;
                     SegmentSeenAfter.Observe((segment.Downloaded.Value - segment.SeenInManifest).TotalSeconds);
+                    SegmentReadDuration.Observe(sw.Elapsed.TotalSeconds);
 
                     // Get the timestamp from the file. It is at the end of the file.
                     var content = await response.Content.ReadAsByteArrayAsync();
@@ -300,6 +307,14 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     private static readonly Histogram ManifestReadDuration = Metrics.CreateHistogram(
         "mlmc_manifest_read_duration_seconds",
         "How long it took to read the manifest. Successful attempts only. First read of each manifest version only.",
+        new HistogramConfiguration
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
+        });
+
+    private static readonly Histogram SegmentReadDuration = Metrics.CreateHistogram(
+        "mlmc_segment_read_duration_seconds",
+        "How long it took to read a segment. Successful attempts only.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
