@@ -26,7 +26,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     /// <summary>
     /// If a retrieved file is at least this old, we report the response's CDN trace IDs (if present) to the outdated content log file.
     /// </summary>
-    private static readonly TimeSpan OutdatedFileThreshold = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan OutdatedFileThreshold = TimeSpan.FromSeconds(10);
 
     public ClientSimulatorService(
         MediaClientOptions options,
@@ -111,7 +111,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         // We add every segment here when we first see it, and remove it when it goes away from the manifest.
         var segments = new List<SegmentInfo>();
 
-        var manifestUrl = string.Format(_options.UrlPattern, mediaStreamIndex, "media.m3u8");
+        var manifestUrl = string.Format(_options.UrlPattern, mediaStreamIndex, _options.MediaPlaylistFilename);
         bool isStartup = true;
 
         // We save the etag of the manifest here, so we can short-circuit and skip any loads when it has not changed.
@@ -156,19 +156,19 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                 var timestampLine = manifest.AsNonemptyLines().Single(x => x.StartsWith("#TIME="));
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(timestampLine.Substring(6), CultureInfo.InvariantCulture));
-                var manifestAge = _timeSource.GetCurrentTime() - timestamp;
+                var age = _timeSource.GetCurrentTime() - timestamp;
 
-                ManifestE2ELatency.Observe(manifestAge.TotalSeconds);
+                ManifestAge.Observe(age.TotalSeconds);
 
-                if (manifestAge > OutdatedFileThreshold)
+                if (age > OutdatedFileThreshold)
                 {
                     OutdatedFiles.Inc();
-                    _outdatedContentTraceLog.RecordResponseWithOutdatedManifest(manifestUrl, response, manifestAge);
+                    _outdatedContentTraceLog.RecordResponseWithOutdatedManifest(manifestUrl, response, age);
                 }
 
                 // Just to verify in console that it is still doing something.
                 if (mediaStreamIndex == _options.StartIndex)
-                    _logger.LogInformation($"Loaded manifest with {segmentPaths.Count} segments, manifest age {manifestAge.TotalSeconds:F2} seconds.");
+                    _logger.LogInformation($"Loaded manifest with {segmentPaths.Count} segments, manifest age {age.TotalSeconds:F2} seconds.");
 
                 var newSegmentPaths = segmentPaths.Except(segments.Select(x => x.Path)).ToList();
                 var removedSegments = segments.Where(x => !segmentPaths.Contains(x.Path)).ToList();
@@ -232,13 +232,28 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
             while (!segment.Cancel.IsCancellationRequested)
             {
                 var segmentUrl = string.Format(_options.UrlPattern, mediaStreamIndex, segment.Path);
-                var request = new HttpRequestMessage(HttpMethod.Head, segmentUrl);
-                var response = await httpClient.SendAsync(request, segment.Cancel);
+                var response = await httpClient.GetAsync(segmentUrl, HttpCompletionOption.ResponseContentRead, segment.Cancel);
 
                 if (response.IsSuccessStatusCode)
                 {
                     segment.Downloaded = DateTimeOffset.UtcNow;
                     SegmentSeenAfter.Observe((segment.Downloaded.Value - segment.SeenInManifest).TotalSeconds);
+
+                    // Get the timestamp from the file. It is at the end of the file.
+                    var content = await response.Content.ReadAsByteArrayAsync();
+                    var timestampBoxBytes = content.AsMemory(content.Length - TimestampBox.Length, TimestampBox.Length);
+                    var timestampBox = TimestampBox.Deserialize(timestampBoxBytes.Span);
+
+                    var age = _timeSource.GetCurrentTime() - timestampBox.Timestamp;
+
+                    SegmentAge.Observe(age.TotalSeconds);
+
+                    if (age > OutdatedFileThreshold)
+                    {
+                        OutdatedFiles.Inc();
+                        _outdatedContentTraceLog.RecordResponseWithOutdatedManifest(segmentUrl, response, age);
+                    }
+
                     break;
                 }
                 else
@@ -311,9 +326,17 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         });
 
 
-    private static readonly Histogram ManifestE2ELatency = Metrics.CreateHistogram(
-        "mlmc_manifest_e2e_latency_seconds",
-        "End to end latency between the manifest being published and becoming available to the client.",
+    private static readonly Histogram ManifestAge = Metrics.CreateHistogram(
+        "mlmc_manifest_age_seconds",
+        "Age of the manifest - the time between when it was published and when it was downloaded by the client.",
+        new HistogramConfiguration
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 3, 10)
+        });
+
+    private static readonly Histogram SegmentAge = Metrics.CreateHistogram(
+        "mlmc_segment_age_seconds",
+        "Age of the segment - the time between when it was published and when it was downloaded by the client.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 3, 10)

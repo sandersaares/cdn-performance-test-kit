@@ -7,6 +7,7 @@ using Common;
 using Koek;
 using Nito.AsyncEx;
 using Prometheus;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -164,6 +165,18 @@ public sealed class MediaServerMiddleware : IAsyncDisposable
                 // We add a Unix timestamp in milliseconds to the end of the manifest file, for E2E latency detection. Assuming accurate clock sync here!
                 var timestampLine = Encoding.UTF8.GetBytes(Environment.NewLine + "#TIME=" + _timeSource.GetCurrentTime().ToUnixTimeMilliseconds());
                 contentBytes = contentBytes.Concat(timestampLine).ToArray();
+            }
+            else
+            {
+                // This must be an MP4 file. Append a timestamp.
+                // The timestamp is an ISOBMFF "free" box with an 8-byte body containing the timestamp (as unix time in milliseconds).
+                var timestampBytes = new TimestampBox
+                    {
+                        Timestamp = _timeSource.GetCurrentTime()
+                    }
+                    .Serialize();
+
+                contentBytes = contentBytes.Concat(timestampBytes).ToArray();
             }
 
             var uploadOptions = new BlobUploadOptions

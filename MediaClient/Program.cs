@@ -21,7 +21,7 @@ public static class Program
         }
 
         var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton(new MediaClientOptions(StartIndex, MediaStreamCount, UrlPattern!, OutdatedContentLogFilePath));
+        builder.Services.AddSingleton(new MediaClientOptions(StartIndex, MediaStreamCount, UrlPattern!, OutdatedContentLogFilePath, MediaPlaylistFilename));
         builder.Services.AddHttpClient();
 
         builder.Services.AddSingleton<OutdatedContentTraceLog>();
@@ -50,6 +50,7 @@ public static class Program
     private static string? UrlPattern;
     private static ushort ListenPort = 5010;
     private static string OutdatedContentLogFilePath = "outdated-content.log";
+    private static string MediaPlaylistFilename = "media.m3u8";
 
     private static bool ParseArguments(string[] args)
     {
@@ -65,6 +66,7 @@ public static class Program
             { "url-pattern=", $"URL pattern to use for generating requests. Expecting a format string with parameter 0 being the media stream index and parameter 1 being the file path. Example: https://storage-account-name.blob.core.windows.net/files/{{0:D5}}/hls/{{1}}", (string val) => UrlPattern = val },
             { "start-index=", $"Index of the first media stream to consume from this instance.", (int val) => StartIndex = val },
             { "media-stream-count=", $"Number of media streams to consume from this instance.", (int val) => MediaStreamCount = val },
+            { "media-playlist-filename=", $"Filename of the media playlist to read. Only single-playlist media streams are supported. Defaults to {MediaPlaylistFilename}.", (string val) => MediaPlaylistFilename = val },
             { "listen-port=", $"Port number to expose metrics on. Defaults to {ListenPort}.", (ushort val) => ListenPort = val },
             { "outdated-content-log=", $"Path to a file where to log sampled trace data from outdated content that is encountered. Defaults to {OutdatedContentLogFilePath}.", (string val) => OutdatedContentLogFilePath = val },
             "",
