@@ -13,7 +13,6 @@
 
 	<ItemGroup>
 		<PackageReference Include="Azure.Storage.Blobs" Version="12.11.0" />
-		<PackageReference Include="Koek" Version="2.0.0" />
 		<PackageReference Include="Koek.CodeAnalysis" Version="2021.1201.19173">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -21,6 +20,10 @@
 		<PackageReference Include="Mono.Options" Version="6.12.0.148" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="6.0.0" />
 		<PackageReference Include="prometheus-net.Experimental" Version="2021.1130.45812" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\Common\Common.csproj" />
 	</ItemGroup>
 
 </Project>

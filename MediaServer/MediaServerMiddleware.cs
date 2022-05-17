@@ -3,6 +3,8 @@ using Azure.Core.Pipeline;
 using Azure.Storage;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Common;
+using Koek;
 using Nito.AsyncEx;
 using Prometheus;
 using System.Diagnostics;
@@ -35,12 +37,14 @@ public sealed class MediaServerMiddleware : IAsyncDisposable
         RequestDelegate next,
         IHostApplicationLifetime hostApplicationLifetime,
         MediaServerOptions options,
+        ITimeSource timeSource,
         ILogger<MediaServerMiddleware> logger)
     {
         _next = next;
         // A little questionable design here (host will not wait for us to stop like this) but good enough for a prototype.
         _cancel = hostApplicationLifetime.ApplicationStopping;
         _options = options;
+        _timeSource = timeSource;
         _logger = logger;
 
         // This is the amount of files we accept in buffer, if the actual uploading becomes a bottleneck.
@@ -82,6 +86,7 @@ public sealed class MediaServerMiddleware : IAsyncDisposable
     private readonly RequestDelegate _next;
     private readonly CancellationToken _cancel;
     private readonly MediaServerOptions _options;
+    private readonly ITimeSource _timeSource;
     private readonly ILogger<MediaServerMiddleware> _logger;
 
     private readonly BlobServiceClient _storageAccountClient;
@@ -153,11 +158,11 @@ public sealed class MediaServerMiddleware : IAsyncDisposable
 
             if (originalPath.EndsWith(".m3u8"))
             {
-                cacheControl = "max-age=1";
+                cacheControl = $"max-age={Constants.MediaSegmentDurationSeconds}";
                 contentType = "application/vnd.apple.mpegurl";
 
                 // We add a Unix timestamp in milliseconds to the end of the manifest file, for E2E latency detection. Assuming accurate clock sync here!
-                var timestampLine = Encoding.UTF8.GetBytes(Environment.NewLine + "#TIME=" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                var timestampLine = Encoding.UTF8.GetBytes(Environment.NewLine + "#TIME=" + _timeSource.GetCurrentTime().ToUnixTimeMilliseconds());
                 contentBytes = contentBytes.Concat(timestampLine).ToArray();
             }
 

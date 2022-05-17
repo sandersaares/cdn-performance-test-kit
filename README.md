@@ -18,6 +18,7 @@ All:
 
 * .NET 6
 * Visual Studio 2022
+* 500-2000 Mbps network connection (depends on media stream count you use)
 
 Media server:
 
@@ -34,16 +35,17 @@ Prepare your Azure Blob Storage Account:
 Start MediaServer:
 
 1. Build the solution in Release mode.
-1. Start MediaServer from a PowerShell terminal: `.\MediaServer.exe --media-stream-count=800 --media-streams-per-second=10 --connection-string="<your Azure Storage connection string here>"`
+1. Start MediaServer from a PowerShell terminal: `.\MediaServer.exe --media-stream-count=100 --media-streams-per-second=10 --connection-string="<your Azure Storage connection string here>"`
     * Specifying the start index allows you to generate media streams with non-overlapping indexes from multiple instances of MediaServer, if you wish.
 1. Open a second PowerShell terminal and execute `Scripts/Start-HlsStream.ps1` to start generating the input media stream.
+    * There is another script for easy [Video Latency Toolkit](https://github.com/sandersaares/video-latency-toolkit) integration if you wish to measure accurate end to end latencies and not just for the storage/network part.
 1. Open http://localhost:5005/metrics. You should see a text file with various status indicators.
 1. Wait for the `mlms_media_streams_connected` line in this text file to update to your desired media stream count. The startup is deliberately slow to avoid a sudden initial spike causing Azure Storage throttling.
 
 Start one or more MediaClients:
 
 1. Build the solution in Release mode.
-1. Start MediaClient from a PowerShell terminal: `.\MediaClient.exe --media-stream-count=800 --url-pattern="https://<your CDN hostname>/files/{0:D5}/hls/{1}"`
+1. Start MediaClient from a PowerShell terminal: `.\MediaClient.exe --media-stream-count=100 --url-pattern="https://<your CDN hostname>/files/{0:D5}/hls/{1}"`
 1. Open http://localhost:5010/metrics. You should see a text file with various status indicators.
 
 Finally, set up Prometheus metric capturing on the metrics endpoints for at least MediaClient instances. How to set up and Prometheus is out of scope for this guide. You can obtain the data on the metrics URLs listed above.

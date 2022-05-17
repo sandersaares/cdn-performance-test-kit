@@ -1,3 +1,5 @@
+using Common;
+using Koek;
 using Mono.Options;
 using Prometheus;
 using Prometheus.Experimental;
@@ -21,6 +23,8 @@ public static class Program
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(new MediaServerOptions(StartIndex, MediaStreamCount, MediaStreamsPerSecond, StorageAccountConnectionString!));
 
+        builder.Services.AddSingleton<ITimeSource>(s => new NtpTimeSource(Constants.TimeserverUrl, s.GetRequiredService<ILogger<NtpTimeSource>>()));
+
         builder.WebHost.UseUrls($"http://+:{ListenPort}");
 
         var app = builder.Build();
@@ -33,6 +37,8 @@ public static class Program
         app.MapMetrics();
         logger.LogInformation($"Exposing metrics on http://<this machine>:{ListenPort}/metrics");
         logger.LogInformation($"Exposing media file storage on http://<this machine>:{ListenPort}/files");
+
+        NtpTimeMetrics.Register(app.Services.GetRequiredService<ITimeSource>());
 
         app.Run();
     }

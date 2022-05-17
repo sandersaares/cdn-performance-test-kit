@@ -1,4 +1,6 @@
-﻿using Mono.Options;
+﻿using Common;
+using Koek;
+using Mono.Options;
 using Prometheus;
 using Prometheus.Experimental;
 using System.Diagnostics;
@@ -23,6 +25,7 @@ public static class Program
         builder.Services.AddHttpClient();
 
         builder.Services.AddSingleton<OutdatedContentTraceLog>();
+        builder.Services.AddSingleton<ITimeSource>(s => new NtpTimeSource(Constants.TimeserverUrl, s.GetRequiredService<ILogger<NtpTimeSource>>()));
 
         builder.Services.AddHostedService<ClientSimulatorService>();
 
@@ -36,6 +39,9 @@ public static class Program
         app.MapMetrics();
 
         logger.LogInformation($"Exposing metrics on http://<this machine>:{ListenPort}/metrics");
+
+        NtpTimeMetrics.Register(app.Services.GetRequiredService<ITimeSource>());
+
         app.Run();
     }
 

@@ -1,27 +1,42 @@
-﻿using Koek;
+﻿using Common;
+using Koek;
 using Prometheus;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
 
 namespace MediaClient;
 
 public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 {
-    private static readonly TimeSpan ManifestRefreshInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan SegmentProbeInterval = TimeSpan.FromSeconds(1);
+    /// <summary>
+    /// We refresh the manifest more often than needed, to ensure that we do not penalize the results
+    /// too much due to the time difference between manifest uploads and manifest downloads, caused by the step size.
+    /// </summary>
+    private static readonly TimeSpan ManifestRefreshInterval = TimeSpan.FromSeconds(Constants.MediaSegmentDurationSeconds / 4.0);
 
     /// <summary>
-    /// If the manifest is at least this old, we report the trace IDs (if present) to the log file.
+    /// Once we see a segment referenced in the manifest, we probe for its existence at this rate.
+    /// We expect the files to appear very fast once they are listed in the manifest, so this iterates very fast.
     /// </summary>
-    private static readonly TimeSpan OutdatedManifestThreshold = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan SegmentProbeInterval = TimeSpan.FromSeconds(0.1);
+
+    /// <summary>
+    /// If a retrieved file is at least this old, we report the response's CDN trace IDs (if present) to the outdated content log file.
+    /// </summary>
+    private static readonly TimeSpan OutdatedFileThreshold = TimeSpan.FromSeconds(5);
 
     public ClientSimulatorService(
         MediaClientOptions options,
         OutdatedContentTraceLog outdatedContentTraceLog,
+        ITimeSource timeSource,
         ILogger<ClientSimulatorService> logger)
     {
         _options = options;
         _outdatedContentTraceLog = outdatedContentTraceLog;
+        _timeSource = timeSource;
         _logger = logger;
 
         _cancel = _cts.Token;
@@ -29,19 +44,23 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
     private readonly MediaClientOptions _options;
     private readonly OutdatedContentTraceLog _outdatedContentTraceLog;
+    private readonly ITimeSource _timeSource;
     private readonly ILogger<ClientSimulatorService> _logger;
 
     private readonly CancellationTokenSource _cts = new();
     private readonly CancellationToken _cancel;
 
-    private Task? _task;
+    private ConcurrentBag<Task> _examineMediaStreamTasks = new();
 
     public async ValueTask DisposeAsync()
     {
         _cts.Cancel();
 
-        if (_task != null)
-            await _task.IgnoreExceptionsAsync();
+        while (_examineMediaStreamTasks.Count != 0)
+        {
+            if (_examineMediaStreamTasks.TryTake(out var task))
+                await task.IgnoreExceptionsAsync();
+        }
 
         _cts.Dispose();
     }
@@ -63,7 +82,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         {
             var thisIndex = mediaStreamIndex;
 
-            _task = Task.Run(() => ExamineManifestForeverAsync(thisIndex, client));
+            _examineMediaStreamTasks.Add(Task.Run(() => ExamineManifestForeverAsync(thisIndex, client)));
         }
 
         return Task.CompletedTask;
@@ -73,8 +92,11 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     {
         _cts.Cancel();
 
-        if (_task != null)
-            await _task.WaitAsync(cancellationToken);
+        while (_examineMediaStreamTasks.Count != 0)
+        {
+            if (_examineMediaStreamTasks.TryTake(out var task))
+                await task.IgnoreExceptionsAsync().WaitAsync(cancellationToken);
+        }
     }
 
     private sealed record SegmentInfo(string Path, DateTimeOffset SeenInManifest, bool IsStartupSegment, CancellationTokenSource Cts, CancellationToken Cancel)
@@ -92,6 +114,9 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         var manifestUrl = string.Format(_options.UrlPattern, mediaStreamIndex, "media.m3u8");
         bool isStartup = true;
 
+        // We save the etag of the manifest here, so we can short-circuit and skip any loads when it has not changed.
+        string etag = "";
+
         try
         {
             while (!_cancel.IsCancellationRequested)
@@ -102,7 +127,19 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 try
                 {
                     var sw = Stopwatch.StartNew();
-                    response = await httpClient.GetAsync(manifestUrl, _cancel);
+
+                    var request = new HttpRequestMessage(HttpMethod.Get, manifestUrl);
+                    request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag));
+
+                    response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, _cancel);
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotModified)
+                    {
+                        // We have already seen this version of the manifest. Just loop again.
+                        ManifestAlreadySeen.Inc();
+                        goto again;
+                    }
+
                     manifest = await response.Content.ReadAsStringAsync(_cancel);
                     ManifestReadDuration.Observe(sw.Elapsed.TotalSeconds);
                 }
@@ -119,11 +156,11 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                 var timestampLine = manifest.AsNonemptyLines().Single(x => x.StartsWith("#TIME="));
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(timestampLine.Substring(6), CultureInfo.InvariantCulture));
-                var manifestAge = DateTimeOffset.UtcNow - timestamp;
+                var manifestAge = _timeSource.GetCurrentTime() - timestamp;
 
                 ManifestE2ELatency.Observe(manifestAge.TotalSeconds);
 
-                if (manifestAge > OutdatedManifestThreshold)
+                if (manifestAge > OutdatedFileThreshold)
                 {
                     OutdatedFiles.Inc();
                     _outdatedContentTraceLog.RecordResponseWithOutdatedManifest(manifestUrl, response, manifestAge);
@@ -131,7 +168,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                 // Just to verify in console that it is still doing something.
                 if (mediaStreamIndex == _options.StartIndex)
-                    _logger.LogInformation($"Loaded manifest with {segmentPaths.Count} segments, E2E latency {manifestAge.TotalSeconds:F2} seconds.");
+                    _logger.LogInformation($"Loaded manifest with {segmentPaths.Count} segments, manifest age {manifestAge.TotalSeconds:F2} seconds.");
 
                 var newSegmentPaths = segmentPaths.Except(segments.Select(x => x.Path)).ToList();
                 var removedSegments = segments.Where(x => !segmentPaths.Contains(x.Path)).ToList();
@@ -176,6 +213,16 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         catch (OperationCanceledException) when (_cancel.IsCancellationRequested)
         {
         }
+        finally
+        {
+            foreach (var segment in segments)
+            {
+                segment.Cts.Cancel();
+                segment.Cts.Dispose();
+            }
+
+            segments.Clear();
+        }
     }
 
     private async Task ExamineSegmentAsync(SegmentInfo segment, int mediaStreamIndex, HttpClient httpClient)
@@ -211,7 +258,9 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         }
     }
 
-    private static readonly Counter ManifestReadSuccessfully = Metrics.CreateCounter("mlmc_manifest_read_total", "Number of times the manifest has been read.");
+    private static readonly Counter ManifestReadSuccessfully = Metrics.CreateCounter("mlmc_manifest_read_total", "Number of times the manifest has been read. Only counts the first time a specific version of the manifest is seen.");
+
+    private static readonly Counter ManifestAlreadySeen = Metrics.CreateCounter("mlmc_manifest_already_seen_total", "Number of times the manifest has been seen but proved to be a version we had already processed.");
 
     private static readonly Counter ManifestReadExceptions = Metrics.CreateCounter(
         "mlmc_manifest_read_exceptions_total",
@@ -223,7 +272,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
     private static readonly Histogram ManifestReadDuration = Metrics.CreateHistogram(
         "mlmc_manifest_read_duration_seconds",
-        "How long it took to read the manifest. Successful attempts only.",
+        "How long it took to read the manifest. Successful attempts only. First read of each manifest version only.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
