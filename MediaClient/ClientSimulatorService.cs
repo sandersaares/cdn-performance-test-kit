@@ -15,7 +15,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     /// We refresh the manifest more often than needed, to ensure that we do not penalize the results
     /// too much due to the time difference between manifest uploads and manifest downloads, caused by the step size.
     /// </summary>
-    private static readonly TimeSpan ManifestRefreshInterval = TimeSpan.FromSeconds(Constants.MediaSegmentDurationSeconds / 4.0);
+    private static readonly TimeSpan ManifestRefreshInterval = TimeSpan.FromSeconds(0.1);
 
     /// <summary>
     /// Once we see a segment referenced in the manifest, we probe for its existence at this rate.
@@ -115,7 +115,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         bool isStartup = true;
 
         // We save the etag of the manifest here, so we can short-circuit and skip any loads when it has not changed.
-        string etag = "";
+        string? etag = null;
 
         try
         {
@@ -129,7 +129,12 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     var sw = Stopwatch.StartNew();
 
                     var request = new HttpRequestMessage(HttpMethod.Get, manifestUrl);
-                    request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag));
+
+                    if (etag != null)
+                    {
+                        // I don't even.
+                        request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue($"\"{etag}\""));
+                    }
 
                     response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, _cancel);
 
@@ -139,6 +144,9 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                         ManifestAlreadySeen.Inc();
                         goto again;
                     }
+
+                    // Azure Blob Storage uses nonstandard non-quoted-string ETag so we need to read it from the "raw" headers.
+                    etag = response.Headers.NonValidated["ETag"].Single();
 
                     manifest = await response.Content.ReadAsStringAsync(_cancel);
                     ManifestReadDuration.Observe(sw.Elapsed.TotalSeconds);

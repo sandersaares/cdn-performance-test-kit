@@ -63,7 +63,7 @@ public static class Program
             "",
             { "h|?|help", "Displays usage instructions.", val => showHelp = val != null },
             "",
-            { "url-pattern=", $"URL pattern to use for generating requests. Expecting a format string with parameter 0 being the media stream index and parameter 1 being the file path. Example: https://storage-account-name.blob.core.windows.net/files/{{0:D5}}/hls/{{1}}", (string val) => UrlPattern = val },
+            { "url-pattern=", $"URL pattern to use for generating requests. Expecting a format string with parameter 0 being the media stream index and parameter 1 being the file path. Example: https://storage-account-name.blob.core.windows.net/files/{{{{0:D5\\}}/hls/{{{{1}}}}", (string val) => UrlPattern = val },
             { "start-index=", $"Index of the first media stream to consume from this instance.", (int val) => StartIndex = val },
             { "media-stream-count=", $"Number of media streams to consume from this instance.", (int val) => MediaStreamCount = val },
             { "media-playlist-filename=", $"Filename of the media playlist to read. Only single-playlist media streams are supported. Defaults to {MediaPlaylistFilename}.", (string val) => MediaPlaylistFilename = val },

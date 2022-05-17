@@ -45,6 +45,8 @@ public sealed class NtpTimeSource : ITimeSource, IAsyncDisposable
 
     private async Task PerformBackgroundUpdatesAsync()
     {
+        bool first = true;
+
         while (!_cts.IsCancellationRequested)
         {
             try
@@ -57,7 +59,11 @@ public sealed class NtpTimeSource : ITimeSource, IAsyncDisposable
                 using var client = new NtpClient(address);
                 _offset = client.GetCorrectionOffset();
 
-                _firstSyncPerformed.SetResult();
+                if (first)
+                {
+                    first = false;
+                    _firstSyncPerformed.SetResult();
+                }
 
                 _log.LogInformation($"Time synchronized from NTP. New offset: {_offset.TotalSeconds:F3} seconds. True time: {GetCurrentTime().ToString(TimestampFormat)}.");
             }
