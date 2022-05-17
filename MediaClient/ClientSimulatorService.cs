@@ -141,6 +141,11 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                         ManifestAlreadySeen.Inc();
                         goto again;
                     }
+                    else if (!response.IsSuccessStatusCode)
+                    {
+                        ManifestReadNonSuccessStatuses.WithLabels(((int)response.StatusCode).ToString()).Inc();
+                        goto again;
+                    }
 
                     etag = response.Headers.ETag?.Tag;
 
@@ -286,6 +291,10 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         catch (OperationCanceledException) when (segment.Cancel.IsCancellationRequested)
         {
         }
+        catch (HttpRequestException ex)
+        {
+            SegmentReadExceptions.WithLabels($"{ex.GetType().Name} {ex.StatusCode}").Inc();
+        }
         catch (Exception ex)
         {
             SegmentReadExceptions.WithLabels(ex.GetType().Name).Inc();
@@ -302,6 +311,14 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         new CounterConfiguration
         {
             LabelNames = new[] { "type" }
+        });
+
+    private static readonly Counter ManifestReadNonSuccessStatuses = Metrics.CreateCounter(
+        "mlmc_manifest_read_non_success_statuses_total",
+        "Number of non-successful HTTP response status codes received when trying to fetch manifests.",
+        new CounterConfiguration
+        {
+            LabelNames = new[] { "code" }
         });
 
     private static readonly Histogram ManifestReadDuration = Metrics.CreateHistogram(
