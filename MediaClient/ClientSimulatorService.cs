@@ -162,7 +162,15 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 // Any non-comment line in the manifest is a path to a segment.
                 var segmentPaths = manifest.AsNonemptyLines().Where(x => !x.StartsWith('#')).ToList();
 
-                var timestampLine = manifest.AsNonemptyLines().Single(x => x.StartsWith("#TIME="));
+                var timestampLine = manifest.AsNonemptyLines().SingleOrDefault(x => x.StartsWith("#TIME="));
+
+                // If an upload is aborted, it can be that there is no timestamp line.
+                if (timestampLine == null)
+                {
+                    ManifestReadExceptions.WithLabels("No timestamp found.").Inc();
+                    goto again;
+                }
+
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(timestampLine.Substring(6), CultureInfo.InvariantCulture));
                 var age = _timeSource.GetCurrentTime() - timestamp;
 
