@@ -132,8 +132,10 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                     if (etag != null)
                     {
-                        // I don't even.
-                        request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue($"\"{etag}\""));
+                        // We need to use the non-validated method because the standard one only accepted ETag values in quotes.
+                        // We cannot use quotes because some CDNs consider 0x8DA37C569822AC8 != "0x8DA37C569822AC8".
+                        if (!request.Headers.TryAddWithoutValidation("If-None-Match", etag))
+                            throw new ContractException("Failed to add If-None-Match header.");
                     }
 
                     response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, _cancel);
@@ -184,7 +186,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                 // Just to verify in console that it is still doing something.
                 if (mediaStreamIndex == _options.StartIndex)
-                    _logger.LogInformation($"Loaded manifest with {segmentPaths.Count} segments, manifest age {age.TotalSeconds:F2} seconds.");
+                    _logger.LogInformation($"Loaded manifest with {segmentPaths.Count} segments, manifest age {age.TotalSeconds:F2} seconds, ETag {etag}.");
 
                 var newSegmentPaths = segmentPaths.Except(segments.Select(x => x.Path)).ToList();
                 var removedSegments = segments.Where(x => !segmentPaths.Contains(x.Path)).ToList();
