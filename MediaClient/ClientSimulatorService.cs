@@ -198,10 +198,20 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 }
 
                 ManifestReadSuccessfully.Inc();
+                
+                var age = _timeSource.GetCurrentTime() - timestamp;
+
+                if (timestamp < lastSeenTimestamp)
+                {
+                    // It is undead! The manifest is older than the previous manifest we had!
+                    UndeadManifestAge.Observe((lastSeenTimestamp.Value - timestamp).TotalSeconds);
+
+                    // We ignore these, as they mess up our accounting.
+                    // Not so sure if players will be happy with them...
+                    goto again;
+                }
 
                 lastSeenTimestamp = timestamp;
-
-                var age = _timeSource.GetCurrentTime() - timestamp;
 
                 ManifestAge.Observe(age.TotalSeconds);
 
@@ -426,6 +436,14 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     private static readonly Histogram ManifestAge = Metrics.CreateHistogram(
         "mlmc_manifest_age_seconds",
         "Age of the manifest - the time between when it was published and when it was downloaded by the client.",
+        new HistogramConfiguration
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 3, 10)
+        });
+
+    private static readonly Histogram UndeadManifestAge = Metrics.CreateHistogram(
+        "mlmc_undead_manifest_age_seconds",
+        "Age of an undead manifest - when time runs backwards and we encounter a manifest from the past.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 3, 10)
