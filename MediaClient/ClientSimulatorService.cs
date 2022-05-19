@@ -344,7 +344,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         "Wall clock time elapsed between two consecutive versions of a manifest.",
         new HistogramConfiguration
         {
-            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 2, 10)
         });
 
     private static readonly Histogram SegmentReadDuration = Metrics.CreateHistogram(
@@ -360,7 +360,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         "Segment age when we first learned of it and started downloading it.",
         new HistogramConfiguration
         {
-            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 2, 10)
         });
 
     private static readonly Counter SegmentsProcessed = Metrics.CreateCounter(
