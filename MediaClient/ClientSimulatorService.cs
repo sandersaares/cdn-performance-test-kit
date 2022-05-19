@@ -155,10 +155,9 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     ManifestReadDuration.Observe(sw.Elapsed.TotalSeconds);
 
                     if (lastUpdated.IsRunning)
-                    {
                         ManifestUpdateInterval.Observe(lastUpdated.Elapsed.TotalSeconds);
-                        lastUpdated.Restart();
-                    }
+
+                    lastUpdated.Restart();
                 }
                 catch (HttpRequestException ex)
                 {
