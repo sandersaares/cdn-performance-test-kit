@@ -197,10 +197,6 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     goto again;
                 }
 
-                ManifestReadSuccessfully.Inc();
-                
-                var age = _timeSource.GetCurrentTime() - timestamp;
-
                 if (timestamp < lastSeenTimestamp)
                 {
                     // It is undead! The manifest is older than the previous manifest we had!
@@ -210,6 +206,10 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     // Not so sure if players will be happy with them...
                     goto again;
                 }
+
+                ManifestReadSuccessfully.Inc();
+
+                var age = _timeSource.GetCurrentTime() - timestamp;
 
                 lastSeenTimestamp = timestamp;
 
