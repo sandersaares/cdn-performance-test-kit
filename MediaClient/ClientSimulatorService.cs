@@ -284,10 +284,14 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 {
                     segment.Downloaded = DateTimeOffset.UtcNow;
                     SegmentSeenAfter.Observe((segment.Downloaded.Value - segment.SeenInManifest).TotalSeconds);
+
+                    var content = await response.Content.ReadAsByteArrayAsync();
+
                     SegmentReadDuration.Observe(sw.Elapsed.TotalSeconds);
 
+                    SegmentDownloadedAfter.Observe((segment.Downloaded.Value - segment.SeenInManifest).TotalSeconds);
+
                     // Get the timestamp from the file. It is at the end of the file.
-                    var content = await response.Content.ReadAsByteArrayAsync();
                     var timestampBoxBytes = content.AsMemory(content.Length - TimestampBox.Length, TimestampBox.Length);
                     var timestampBox = TimestampBox.Deserialize(timestampBoxBytes.Span);
 
@@ -405,6 +409,14 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     private static readonly Histogram SegmentSeenAfter = Metrics.CreateHistogram(
         "mlmc_segment_seen_after_seconds",
         "How many seconds it took for us to confirm that a segment exists at the expected URL.",
+        new HistogramConfiguration
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 2, 10)
+        });
+
+    private static readonly Histogram SegmentDownloadedAfter = Metrics.CreateHistogram(
+        "mlmc_segment_downloaded_after_seconds",
+        "How many seconds it took for us to fully download a segment after we found that it exists at the expected URL.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 2, 10)
