@@ -175,8 +175,6 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     goto again;
                 }
 
-                ManifestReadSuccessfully.Inc();
-
                 // Any non-comment line in the manifest is a path to a segment.
                 var segmentPaths = manifest.AsNonemptyLines().Where(x => !x.StartsWith('#')).ToList();
 
@@ -198,6 +196,8 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     ManifestReadExceptions.WithLabels("Expected 304 got 200").Inc();
                     goto again;
                 }
+
+                ManifestReadSuccessfully.Inc();
 
                 lastSeenTimestamp = timestamp;
 
