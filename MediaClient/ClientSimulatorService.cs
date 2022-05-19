@@ -117,6 +117,8 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         // We save the etag of the manifest here, so we can short-circuit and skip any loads when it has not changed.
         string? etag = null;
 
+        var lastUpdated = new Stopwatch();
+
         try
         {
             while (!_cancel.IsCancellationRequested)
@@ -151,6 +153,12 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                     manifest = await response.Content.ReadAsStringAsync(_cancel);
                     ManifestReadDuration.Observe(sw.Elapsed.TotalSeconds);
+
+                    if (lastUpdated.IsRunning)
+                    {
+                        ManifestUpdateInterval.Observe(lastUpdated.Elapsed.TotalSeconds);
+                        lastUpdated.Restart();
+                    }
                 }
                 catch (HttpRequestException ex)
                 {
@@ -269,8 +277,10 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     var timestampBox = TimestampBox.Deserialize(timestampBoxBytes.Span);
 
                     var age = _timeSource.GetCurrentTime() - timestampBox.Timestamp;
+                    var ageAtDownloadStart = segment.SeenInManifest - timestampBox.Timestamp;
 
                     SegmentAge.Observe(age.TotalSeconds);
+                    SegmentAgeAtDownloadStart.Observe(ageAtDownloadStart.TotalSeconds);
 
                     if (age > OutdatedFileThreshold)
                     {
@@ -329,9 +339,25 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
         });
 
+    private static readonly Histogram ManifestUpdateInterval = Metrics.CreateHistogram(
+        "mlmc_manifest_update_interval_seconds",
+        "Wall clock time elapsed between two consecutive versions of a manifest.",
+        new HistogramConfiguration
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
+        });
+
     private static readonly Histogram SegmentReadDuration = Metrics.CreateHistogram(
         "mlmc_segment_read_duration_seconds",
-        "How long it took to read a segment. Successful attempts only.",
+        "How long it took to read a segment. Successful attempts only. Single attempt only (e.g. 404s will reset the timer).",
+        new HistogramConfiguration
+        {
+            Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
+        });
+
+    private static readonly Histogram SegmentAgeAtDownloadStart = Metrics.CreateHistogram(
+        "mlmc_segment_age_at_download_start_seconds",
+        "Segment age when we first learned of it and started downloading it.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 1, 10)
@@ -380,7 +406,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
     private static readonly Histogram SegmentAge = Metrics.CreateHistogram(
         "mlmc_segment_age_seconds",
-        "Age of the segment - the time between when it was published and when it was downloaded by the client.",
+        "Age of the segment - total time elapsed between when it was published and when it was completely downloaded by the client.",
         new HistogramConfiguration
         {
             Buckets = Histogram.PowersOfTenDividedBuckets(-1, 3, 10)
