@@ -119,6 +119,11 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
         var lastUpdated = new Stopwatch();
 
+        // It can be that the CDN does not return 304 Not Modified in response to ETag match.
+        // We use this to add an additional layer of equality checking - if the timestamp is exactly the same,
+        // we consider it the exact same manifest and ignore the update.
+        DateTimeOffset? lastSeenTimestamp = null;
+
         try
         {
             while (!_cancel.IsCancellationRequested)
@@ -180,11 +185,22 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 // If an upload is aborted, it can be that there is no timestamp line.
                 if (timestampLine == null)
                 {
-                    ManifestReadExceptions.WithLabels("No timestamp found.").Inc();
+                    ManifestReadExceptions.WithLabels("No timestamp found").Inc();
                     goto again;
                 }
 
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(timestampLine.Substring(6), CultureInfo.InvariantCulture));
+
+                if (lastSeenTimestamp == timestamp)
+                {
+                    // This should have been prevent by ETag match.
+                    // We assume that we can never have two different manifests with the same timestamp on the same URL.
+                    ManifestReadExceptions.WithLabels("Expected 304 got 200").Inc();
+                    goto again;
+                }
+
+                lastSeenTimestamp = timestamp;
+
                 var age = _timeSource.GetCurrentTime() - timestamp;
 
                 ManifestAge.Observe(age.TotalSeconds);
@@ -220,7 +236,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 foreach (var path in newSegmentPaths)
                 {
                     var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancel);
-                    var segment = new SegmentInfo(path, DateTimeOffset.UtcNow, isStartup, cts, cts.Token);
+                    var segment = new SegmentInfo(path, _timeSource.GetCurrentTime(), isStartup, cts, cts.Token);
                     segments.Add(segment);
 
                     // Startup segments are just for decoration, we do not bother processing them as we do not know how old they are so we might have false expectations.
