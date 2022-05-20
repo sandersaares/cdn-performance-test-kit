@@ -47,11 +47,13 @@ public sealed class NtpTimeSource : ITimeSource, IAsyncDisposable
     {
         bool first = true;
 
+        var cancel = _cts.Token;
+
         while (!_cts.IsCancellationRequested)
         {
             try
             {
-                var address = (await Dns.GetHostAddressesAsync(_timeserverUrl.Host).WaitAsync(_cts.Token)).FirstOrDefault();
+                var address = (await Dns.GetHostAddressesAsync(_timeserverUrl.Host).WaitAsync(cancel)).FirstOrDefault();
 
                 if (address == null)
                     throw new ContractException("NTP server could not be resolved to an IP address. DNS glitch?");
@@ -74,7 +76,7 @@ public sealed class NtpTimeSource : ITimeSource, IAsyncDisposable
 
             try
             {
-                await Task.Delay(RefreshInterval, _cts.Token);
+                await Task.Delay(RefreshInterval, cancel);
             }
             catch (OperationCanceledException) when (_cts.IsCancellationRequested)
             {
