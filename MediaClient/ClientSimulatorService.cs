@@ -124,6 +124,10 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
         // we consider it the exact same manifest and ignore the update.
         DateTimeOffset? lastSeenTimestamp = null;
 
+        // We use this to request only newer manifest versions.
+        // Not every CDN edge node has the latest version, so this avoids rollback to undead manifests.
+        DateTimeOffset? lastModified = null;
+
         try
         {
             while (!_cancel.IsCancellationRequested)
@@ -139,6 +143,9 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                     if (etag != null)
                         request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag, isWeak: false));
+
+                    if (lastModified != null)
+                        request.Headers.IfModifiedSince = lastModified;
 
                     response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, _cancel);
 
@@ -212,6 +219,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 var age = _timeSource.GetCurrentTime() - timestamp;
 
                 lastSeenTimestamp = timestamp;
+                lastModified = response.Content.Headers.LastModified;
 
                 ManifestAge.Observe(age.TotalSeconds);
 
