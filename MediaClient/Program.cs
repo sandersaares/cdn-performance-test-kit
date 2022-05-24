@@ -21,7 +21,7 @@ public static class Program
         }
 
         var builder = WebApplication.CreateBuilder();
-        builder.Services.AddSingleton(new MediaClientOptions(StartIndex, MediaStreamCount, UrlPattern!, OutdatedContentLogFilePath, MediaPlaylistFilename));
+        builder.Services.AddSingleton(new MediaClientOptions(StartIndex, MediaStreamCount, UrlPattern!, OutdatedContentLogFilePath, MediaPlaylistFilename, EnableEtag: !DisableEtag));
         builder.Services.AddHttpClient();
 
         builder.Services.AddSingleton<OutdatedContentTraceLog>();
@@ -51,6 +51,7 @@ public static class Program
     private static ushort ListenPort = 5010;
     private static string OutdatedContentLogFilePath = "outdated-content.log";
     private static string MediaPlaylistFilename = "media.m3u8";
+    private static bool DisableEtag = false;
 
     private static bool ParseArguments(string[] args)
     {
@@ -69,7 +70,7 @@ public static class Program
             { "media-playlist-filename=", $"Filename of the media playlist to read. Only single-playlist media streams are supported. Defaults to {MediaPlaylistFilename}.", (string val) => MediaPlaylistFilename = val },
             { "listen-port=", $"Port number to expose metrics on. Defaults to {ListenPort}.", (ushort val) => ListenPort = val },
             { "outdated-content-log=", $"Path to a file where to log sampled trace data from outdated content that is encountered. Defaults to {OutdatedContentLogFilePath}.", (string val) => OutdatedContentLogFilePath = val },
-            "",
+            { "disable-etag", $"If set, client does not ask server to cache-match based on ETag. This is unrealistic - real browsers do use ETag validation. However, it may be useful for diagnostics. Defaults to {DisableEtag}.", val => DisableEtag = val != null },
             { "debugger", "Requests a debugger to be attached before the app starts.", val => debugger = val != default, true }
         };
 

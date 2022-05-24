@@ -141,7 +141,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                     var request = new HttpRequestMessage(HttpMethod.Get, manifestUrl);
 
-                    if (etag != null)
+                    if (etag != null && _options.EnableEtag)
                         request.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(etag, isWeak: false));
 
                     if (lastModified != null)
