@@ -30,12 +30,12 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
     public ClientSimulatorService(
         MediaClientOptions options,
-        OutdatedContentTraceLog outdatedContentTraceLog,
+        UnexpectedContentTraceLog outdatedContentTraceLog,
         ITimeSource timeSource,
         ILogger<ClientSimulatorService> logger)
     {
         _options = options;
-        _outdatedContentTraceLog = outdatedContentTraceLog;
+        _unexpectedContentTraceLog = outdatedContentTraceLog;
         _timeSource = timeSource;
         _logger = logger;
 
@@ -43,7 +43,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
     }
 
     private readonly MediaClientOptions _options;
-    private readonly OutdatedContentTraceLog _outdatedContentTraceLog;
+    private readonly UnexpectedContentTraceLog _unexpectedContentTraceLog;
     private readonly ITimeSource _timeSource;
     private readonly ILogger<ClientSimulatorService> _logger;
 
@@ -196,6 +196,8 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                 var timestamp = DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(timestampLine.Substring(6), CultureInfo.InvariantCulture));
 
+                var age = _timeSource.GetCurrentTime() - timestamp;
+
                 if (lastSeenTimestamp == timestamp)
                 {
                     // This should have been prevent by ETag match.
@@ -207,7 +209,13 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 if (timestamp < lastSeenTimestamp)
                 {
                     // It is undead! The manifest is older than the previous manifest we had!
-                    UndeadManifestAge.Observe((lastSeenTimestamp.Value - timestamp).TotalSeconds);
+                    UndeadManifestAge.Observe(age.TotalSeconds);
+
+                    // Report it! We report undead manifest age as the amount of time it reverted us by, not as actual age from creation.
+                    // This will be a negative amount, to highlight that we went back in time.
+                    var undeadManifestTimeRegression = timestamp - lastSeenTimestamp.Value;
+
+                    _unexpectedContentTraceLog.RecordResponseWithUnexpectedContent(manifestUrl, response, undeadManifestTimeRegression);
 
                     // We ignore these, as they mess up our accounting.
                     // Not so sure if players will be happy with them...
@@ -216,7 +224,6 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
 
                 ManifestReadSuccessfully.Inc();
 
-                var age = _timeSource.GetCurrentTime() - timestamp;
 
                 lastSeenTimestamp = timestamp;
                 lastModified = response.Content.Headers.LastModified;
@@ -226,7 +233,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                 if (age > OutdatedFileThreshold)
                 {
                     OutdatedFiles.Inc();
-                    _outdatedContentTraceLog.RecordResponseWithOutdatedManifest(manifestUrl, response, age);
+                    _unexpectedContentTraceLog.RecordResponseWithUnexpectedContent(manifestUrl, response, age);
                 }
 
                 // Just to verify in console that it is still doing something.
@@ -322,7 +329,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
                     if (age > OutdatedFileThreshold)
                     {
                         OutdatedFiles.Inc();
-                        _outdatedContentTraceLog.RecordResponseWithOutdatedManifest(segmentUrl, response, age);
+                        _unexpectedContentTraceLog.RecordResponseWithUnexpectedContent(segmentUrl, response, age);
                     }
 
                     break;

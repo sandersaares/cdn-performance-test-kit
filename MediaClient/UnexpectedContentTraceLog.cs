@@ -4,23 +4,26 @@ using System.Text;
 
 namespace MediaClient
 {
-    public sealed class OutdatedContentTraceLog : IAsyncDisposable
+    public sealed class UnexpectedContentTraceLog : IAsyncDisposable
     {
+        /// <summary>
+        /// We avoid logging too much just to avoid spamming the disk full if it starts happening too much for whatever reason.
+        /// </summary>
         private static readonly TimeSpan MinIntervalBetweenReports = TimeSpan.FromSeconds(1);
 
-        public OutdatedContentTraceLog(
+        public UnexpectedContentTraceLog(
             MediaClientOptions options,
             IHostApplicationLifetime hostApplicationLifetime,
-            ILogger<OutdatedContentTraceLog> logger)
+            ILogger<UnexpectedContentTraceLog> logger)
         {
-            _writer = new StreamWriter(options.OutdatedContentLogFilePath, append: false, Encoding.UTF8);
+            _writer = new StreamWriter(options.UnexpectedContentLogFilePath, append: false, Encoding.UTF8);
             _logger = logger;
 
             _cancel = hostApplicationLifetime.ApplicationStopping;
         }
 
         private readonly StreamWriter _writer;
-        private readonly ILogger<OutdatedContentTraceLog> _logger;
+        private readonly ILogger<UnexpectedContentTraceLog> _logger;
         private readonly CancellationToken _cancel;
 
         public ValueTask DisposeAsync()
@@ -46,7 +49,7 @@ namespace MediaClient
             "X-Cache"
         };
 
-        public void RecordResponseWithOutdatedManifest(string url, HttpResponseMessage response, TimeSpan manifestAge)
+        public void RecordResponseWithUnexpectedContent(string url, HttpResponseMessage response, TimeSpan contentAge)
         {
             Task.Run(async delegate
             {
@@ -70,7 +73,7 @@ namespace MediaClient
 
                         var traceIdsString = string.Join(" - ", traceIds.Select(pair => $"{pair.Key}: {pair.Value}"));
 
-                        await _writer!.WriteLineAsync($"{DateTimeOffset.UtcNow:O} - {url} - {manifestAge.TotalSeconds:F1} seconds old - {traceIdsString}");
+                        await _writer!.WriteLineAsync($"{DateTimeOffset.UtcNow:O} - {url} - {contentAge.TotalSeconds:F1} seconds old - {traceIdsString}");
                         await _writer.FlushAsync();
                     }
                 }

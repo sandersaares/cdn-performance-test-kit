@@ -1,6 +1,6 @@
 ﻿namespace MediaClient;
 
-public sealed record MediaClientOptions(int StartIndex, int MediaStreamCount, string UrlPattern, string OutdatedContentLogFilePath, string MediaPlaylistFilename, bool EnableEtag)
+public sealed record MediaClientOptions(int StartIndex, int MediaStreamCount, string UrlPattern, string UnexpectedContentLogFilePath, string MediaPlaylistFilename, bool EnableEtag)
 {
     /// <summary>
     /// URL pattern for resolving files from Azure Storage.
