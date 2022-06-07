@@ -305,7 +305,7 @@ public sealed class ClientSimulatorService : IHostedService, IAsyncDisposable
             {
                 var sw = Stopwatch.StartNew();
                 var segmentUrl = string.Format(_options.UrlPattern, mediaStreamIndex, segment.Path);
-                var response = await httpClient.GetAsync(segmentUrl, HttpCompletionOption.ResponseContentRead, segment.Cancel);
+                var response = await httpClient.GetAsync(segmentUrl, HttpCompletionOption.ResponseHeadersRead, segment.Cancel);
 
                 if (response.IsSuccessStatusCode)
                 {
