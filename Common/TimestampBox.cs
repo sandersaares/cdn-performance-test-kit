@@ -25,6 +25,34 @@ public sealed class TimestampBox
         return buffer;
     }
 
+    /// <summary>
+    /// Whether we can identify a timestamp box in the given bytes.
+    /// </summary>
+    public static bool ExistsIn(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length != Length)
+            return false;
+
+        var boxLength = BinaryPrimitives.ReadInt32BigEndian(bytes.Slice(0, 4));
+
+        if (boxLength != Length)
+            return false;
+
+        if (bytes[4] != (byte)'f')
+            return false;
+
+        if (bytes[5] != (byte)'r')
+            return false;
+
+        if (bytes[6] != (byte)'e')
+            return false;
+
+        if (bytes[7] != (byte)'e')
+            return false;
+
+        return true;
+    }
+
     public static TimestampBox Deserialize(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length != Length)
